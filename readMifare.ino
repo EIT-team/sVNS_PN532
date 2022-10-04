@@ -162,23 +162,29 @@ void loop(void) {
       // We probably have a Mifare Ultralight card ...
       Serial.println("Seems to be a Mifare Ultralight tag (7 byte UID)");
 	  
-      // Try to read the first general-purpose user page (#4)
-      Serial.println("Reading page 4");
-      uint8_t data[32];
-      success = nfc.mifareultralight_ReadPage (4, data);
-      if (success)
-      {
-        // Data seems to have been read ... spit it out
-        nfc.PrintHexChar(data, 4);
-        Serial.println("");
-		
+      // Try to read general-purpose user page 4 to 15
+      for (int pageNum = 4; pageNum <= 15; pageNum++){
+        //char buffer[];
+        
+        Serial.print("Reading page ");
+        Serial.println(pageNum);
+        uint8_t data[32];
+        success = nfc.mifareultralight_ReadPage (pageNum, data);
+        if (success)
+        {
+          // Data seems to have been read ... spit it out
+          nfc.PrintHexChar(data, 4);
+          Serial.println("");		
         // Wait a bit before reading the card again
-        delay(1000);
+        //delay(1000);
+        }
+        else
+        {
+          Serial.println("Ooops ... unable to read the requested page!?");
+        }
       }
-      else
-      {
-        Serial.println("Ooops ... unable to read the requested page!?");
-      }
+      // Wait a bit before reading the card again
+      delay(1000);
     }
   }
 }
