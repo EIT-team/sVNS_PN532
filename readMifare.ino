@@ -163,9 +163,7 @@ void loop(void) {
       Serial.println("Seems to be a Mifare Ultralight tag (7 byte UID)");
 	  
       // Try to read general-purpose user page 4 to 15
-      for (int pageNum = 4; pageNum <= 15; pageNum++){
-        //char buffer[];
-        
+      for (uint8_t pageNum = 4; pageNum <= 15; pageNum++){
         Serial.print("Reading page ");
         Serial.println(pageNum);
         uint8_t data[32];
@@ -183,7 +181,43 @@ void loop(void) {
           Serial.println("Ooops ... unable to read the requested page!?");
         }
       }
+      // Try to write the 32 byte data to the specified page
+      //uint8_t data[32];
+      Serial.println("\n\nConfirm the test write");
+      Serial.flush();
+      while (!Serial.available());
+      while (Serial.available()) {
+        Serial.read();
+      }
+      Serial.flush();
+      //memcpy(data, (uint8_t) {0,1,0,1,0,1,0,1}, sizeof data) // make data array
+      uint8_t data[4] = {200,15,3,10};
+      nfc.mifareultralight_WritePage(6, data); // write the data
+      
+      // Select the page to write
+//                  uint8_t pageNum = 0;
+//                  Serial.println("\n\nPrepare the memory: 1) Page");
+//                  Serial.flush();
+//                  while (!Serial.available());
+//                  while (Serial.available()) {
+//                    pageNum = Serial.read();
+//                  }
+//                  Serial.print("Confirm: page "); Serial.println(pageNum);
+//                  Serial.flush();
+//                  // Data to write
+//                  Serial.println("\n\nPrepare the memory: 2) Data");
+//                  uint8_t dataWr[32] = {};
+//                  while (!Serial.available());
+//                  while (Serial.available()) {
+//                    for (uint8_t i = 0; i < 32; i++){
+//                    dataWr[i] = Serial.read();
+//                    }
+//                  }
+//                  Serial.print("Test dataWr:"); 
+//                  nfc.PrintHexChar(dataWr, 32);
+//                  Serial.println("");
       // Wait a bit before reading the card again
+      //Serial.flush();
       delay(1000);
     }
   }
