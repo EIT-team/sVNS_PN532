@@ -64,6 +64,12 @@ products from Adafruit!
 // Or use this line for a breakout or shield with an I2C connection:
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
+// variables and constants for the Serial Read handling
+const byte numChars = 32;
+char receivedChars[numChars]; // Array to store received characters from Serial Read
+uint8_t savedNumber = 0;
+boolean newData = false;
+uint8_t dataNumber = 0;
 
 void setup(void) {
   Serial.begin(115200);
@@ -181,67 +187,101 @@ void loop(void) {
           Serial.println("Ooops ... unable to read the requested page!?");
         }
       }
+      
       // Try to write the 32 byte data to the specified page
       
       // Select the page to write
       uint8_t pageWr;
       Serial.println("\n\n1) Enter the page to write");
-      Serial.flush();
-      while (!Serial.available());
-      while (Serial.available()) {
-        pageWr = Serial.read();
+      receiveNumber();
+      pageWr = saveNumber();
+      confirm();
+      Serial.print("Will write to the page: "); Serial.println(pageWr);
+      confirm();
+
+      // Create data to write to the selected page
+      uint8_t dataWr[4]; // 4-byte array for data
+      Serial.println("\n\nEnter byte 1"); 
+      receiveNumber();
+      dataWr[0] = saveNumber();
+      Serial.println("\n\nEnter byte 2"); 
+      receiveNumber();
+      dataWr[1] = saveNumber();
+      Serial.println("\n\nEnter byte 3"); 
+      receiveNumber();
+      dataWr[2] = saveNumber();
+      Serial.println("\n\nEnter byte 4"); 
+      receiveNumber();
+      dataWr[3] = saveNumber();
+      Serial.print("Will write the following data page: "); 
+      for (byte i = 0; i < 4; i++) {
+        Serial.print(dataWr[i], HEX); Serial.print(", ");
       }
-      Serial.print("Confirm: will write to page "); Serial.println(pageWr);
-      Serial.flush();
+      confirm();
+
+      nfc.mifareultralight_WritePage(pageWr, dataWr);
       
-      // Data to write, use comma separation
-      const byte numChars = 32;
-      char receivedChars[numChars]; // initialize 32-char array to store the user input
-      char tempChars[numChars]; // temporary 32-char array for parsing
-      uint8_t num1; uint8_t num2; uint8_t num3; uint8_t num4; // numbers to be written
-      static byte ndx = 0;
-      char rc; // received character from the serial monitor
-      static boolean recvInProgress = false;
-      char endMarker = '\n'; // newline terminates the array
+     
+//      for (byte n = 0; n < 4; n++) {
+//        Serial.print("Tests dataWr in HEX: "); Serial.print(dataWr[n], HEX); Serial.print(" ");
+//      }
+//      Serial.print("Test data using NFC PrintHexChar");     
+//      nfc.PrintHexChar(dataWr, 32);
+//      Serial.println("");
+
+      // Test write NFC memory with the saved values
+      // nfc.mifareultralight_WritePage(pageWr, dataWr);
       
-      Serial.println("\n\nPrepare the memory: 2) Data");
-      while (!Serial.available());
-      while (Serial.available()) {
-        rc = Serial.read();
-        if (recvInProgress) {
-          if (rc != endMarker){
-            receivedChars[ndx] = rc;
-            ndx ++;
-            if (ndx >= numChars){
-              ndx = numChars - 1;
-            }
-          }
-          else {
-            receivedChars[ndx] = '\0'; // terminate the string
-            recvInProgress = true;
-            ndx = 0;
-          }
-        }
-      }
-      strcpy (tempChars, receivedChars);
-      char * strtokIndx; // this is used as strtok() as an index
-      strtokIndx = strtok(tempChars, ","); num1 = atoi(strtokIndx); // convert the first number to integer
-      strtokIndx = strtok(NULL, ","); num2 = atoi(strtokIndx); // convert the second number to integer
-      strtokIndx = strtok(NULL, ","); num3 = atoi(strtokIndx); // convert the third number to integer
-      strtokIndx = strtok(NULL, ","); num4 = atoi(strtokIndx); // convert the fourth number to integer
-      uint8_t dataWr[4] = {num1,num2,num3,num4}; // initialize 4-number array for the memory write
-      
-      Serial.print("Test receivedChars: "); Serial.print(receivedChars);
-//      Serial.print("Test dataWr: "); Serial.println(dataWr);
-      for (byte n = 0; n < 4; n++) {
-        Serial.print("Tests dataWr in HEX: "); Serial.print(dataWr[n], HEX); Serial.print(" ");
-      }
-      Serial.print("Test data using NFC PrintHexChar");     
-      nfc.PrintHexChar(dataWr, 32);
-      Serial.println("");
       // Wait a bit before reading the card again
       //Serial.flush();
       delay(1000);
     }
+  }
+}
+
+void receiveNumber() {
+    static byte ndx = 0;
+    char endMarker = '\n';
+    char rc;
+    Serial.flush();
+    while (!Serial.available());
+    while (Serial.available()) {
+        delay(2);
+        rc = Serial.read();
+
+        if (rc != endMarker) {
+            receivedChars[ndx] = rc;
+            ndx++;
+            if (ndx >= numChars) {
+                ndx = numChars - 1;
+            }
+        }
+        else {
+            receivedChars[ndx] = '\0'; // terminate the string
+            ndx = 0;
+            newData = true;
+        }
+    }
+}
+
+uint8_t saveNumber() {
+    if (newData == true) {
+        dataNumber = 0;             // new for this version
+        dataNumber = atoi(receivedChars);   // new for this version
+        Serial.print("\n\nThe following input has been done on the Serial Monitor: ");
+        Serial.println(receivedChars);
+        Serial.print("\n\nData represented as Number ... ");    // new for this version
+        Serial.println(dataNumber);     // new for this version
+        newData = false;
+    }
+    return dataNumber;
+}
+
+void confirm() {
+    // Wait any user input before proceeding
+  Serial.println("\n\nSend any character to proceed");
+  while (!Serial.available());
+  while (Serial.available()) {
+  Serial.read();
   }
 }
