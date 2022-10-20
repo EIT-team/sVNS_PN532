@@ -178,7 +178,7 @@ void loop(void) {
           Serial.println("Default: 0 1 93 61");
           break;
         case 5:
-          Serial.println("Stimulation Time On (Duty Cycle): msec Byte, sec HB, sec LB; On/Off byte");
+          Serial.println("Stimulation Time On (Duty Cycle): msec Byte, sec LB, sec HB; On/Off byte");
           Serial.println("Default: 0 112 2 1");
           break;
         case 6:
@@ -220,7 +220,7 @@ void loop(void) {
       uint8_t dataWr[4]; // 4-byte array for data
       Serial.println("\n\n2) Enter data");
       for (byte i = 0; i < 4; i++) {
-          Serial.print("\n\nEnter byte "); Serial.println(i+1);
+          Serial.print("\n\nEnter byte "); Serial.println(i);
           receiveNumber();
           dataWr[i] = saveNumber();
       }
