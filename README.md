@@ -2,7 +2,7 @@
 NFC transmitter for 16-channel sVNS project
 
 Flash to Arduino UNO or equivalent board.
-Requires Adafruit PN532 Arduino library.
+\nRequires Adafruit PN532 Arduino library.
 Operates on the Serial interface (Serial Monitor) with 115200 baud rate. 
 Please ensure the correct rate is selected when starting the Serial Monitor.
 Please follow the commands as instructed, i.e. when prompted for confirmation send exactly ONE character or just press "Enter" button once (without any character). 
