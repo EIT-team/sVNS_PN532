@@ -1,5 +1,5 @@
 # sVNS_PN532
-NFC transmitter code for 16-channel sVNS project
+NFC transmitter code for 15-channel sVNS project
 
 1) Once only: Go to Tools - Manage Libraries. Find and install Adafruit BusIO, Adafruit Circuit Playground and Adafruit PN532 libraries.
 2) Verify and upload latest version of the INO sketch to Arduino UNO or equivalent board.
