@@ -4,6 +4,10 @@
     @author   Adafruit Industries
 	@license  BSD (see license.txt)
 
+    Modified by Edvards Rutkovskis.
+    
+    Original description:
+
     This example will wait for any ISO14443A card or tag, and
     depending on the size of the UID will attempt to read from it.
    
@@ -19,6 +23,18 @@
     Ultralight card, and the 4 byte pages can be read directly.
     Page 4 is read by default since this is the first 'general-
     purpose' page on the tags.
+
+    Modifications by Ed:
+    The code repurposed for operation with NT3H2211 memory for
+    16-channel sVNS implant. 
+    NT3H is Mifare Ultralight-supported tag, hence 7-byte UID.
+    4-byte UID-related code commented and uncompiled to save the memory.
+    All tag memory from page 4 to 15 is read and then user is prompted
+    to modify the memory in the Serial Monitor. 
+    For the correct operation, select Serial baud rate of 115200 and
+    follow prompts precicely.
+
+
 
 
 This is an example sketch for the Adafruit PN532 NFC/RFID breakout boards
@@ -65,10 +81,10 @@ products from Adafruit!
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
 // variables and constants for the Serial Read handling
-const byte numChars = 32;
+const byte numChars = 32;     // Number of bytes for the array
 char receivedChars[numChars]; // Array to store received characters from Serial Read
-boolean newData = false;
-uint8_t dataNumber = 0;
+boolean newData = false;      // Needed to detect new input from the Serial Mon
+uint8_t dataNumber = 0;       
 
 void setup(void) {
   Serial.begin(115200);
@@ -117,7 +133,8 @@ void loop(void) {
     {
       // We probably have a Mifare Classic card ... 
       Serial.println("Seems to be a Mifare Classic card (4 byte UID)");
-      Serial.println("Device not supported with this code");
+      Serial.println("Device not supported with this code");  // NT3H is 7-byte UID. Mifare Classic not supported to save the memory.
+                                                              // Comment 4-byte stuff: 
 //	  
 //      // Now we need to try to authenticate it for read/write access
 //      // Try with the factory default KeyA: 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
@@ -166,13 +183,13 @@ void loop(void) {
     if (uidLength == 7)
     {
       // We probably have a Mifare Ultralight card ...
-      Serial.println("Seems to be a Mifare Ultralight tag (7 byte UID)");
+      Serial.println("Seems to be a Mifare Ultralight tag (7 byte UID)"); // NT3H detected
 	  
       // Try to read general-purpose user page 4 to 15
       for (uint8_t pageNum = 4; pageNum <= 15; pageNum++){
         Serial.print("Reading page ");
         Serial.println(pageNum);
-        switch (pageNum) {
+        switch (pageNum) { // Reading stimulation parameters 
           case 4:
           Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
           Serial.println("Default: 0 1 93 61");
@@ -189,7 +206,7 @@ void loop(void) {
           Serial.println("Current Stimulation Channel (channel scanning mode)");
           break;
         }
-        uint8_t data[32];
+        uint8_t data[numChars];
         success = nfc.mifareultralight_ReadPage (pageNum, data);
         if (success)
         {
@@ -208,6 +225,7 @@ void loop(void) {
       // Try to write the specified data to the specified page
       
       // Select the page to write
+
       uint8_t pageWr;
       Serial.println("\n\n1) Enter the page to write");
       receiveNumber();
@@ -217,7 +235,7 @@ void loop(void) {
 
       // Create data to write to the selected page
 
-      uint8_t dataWr[4]; // 4-byte array for data
+      uint8_t dataWr[4]; // 4-byte array for the stimulation data
       Serial.println("\n\n2) Enter data");
       for (byte i = 0; i < 4; i++) {
           Serial.print("\n\nEnter byte "); Serial.println(i);
@@ -242,6 +260,7 @@ void loop(void) {
   }
 }
 
+// Function to store the Serial Input to the string array
 void receiveNumber() {
     static byte ndx = 0;
     char endMarker = '\n';
@@ -267,6 +286,7 @@ void receiveNumber() {
     }
 }
 
+// Function to convert the string array input to the integer
 uint8_t saveNumber() {
     if (newData == true) {
         dataNumber = 0;             // new for this version
@@ -283,6 +303,7 @@ uint8_t saveNumber() {
     return dataNumber;
 }
 
+// Confirmation function to hold the loop
 void confirm() {
     // Wait any user input before proceeding
   Serial.println("\n\nSend any character via 'Send' or press Enter once to proceed");
