@@ -81,9 +81,15 @@ products from Adafruit!
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
 // variables and constants for the Serial Read handling
-const byte numChars = 32;     // Number of bytes for the array
+//const byte numChars = 32;     // Number of bytes for the array
+const byte numChars = 13;
 char receivedChars[numChars]; // Array to store received characters from Serial Read
+char tempChars[numChars]; // Temporary array for parsing
 boolean newData = false;      // Needed to detect new input from the Serial Mon
+char array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
+char array_T_on_on[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
+char array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
+
 uint8_t dataNumber = 0;       
 
 void setup(void) {
@@ -134,104 +140,41 @@ void loop(void) {
       // We probably have a Mifare Classic card ... 
       Serial.println("Seems to be a Mifare Classic card (4 byte UID)");
       Serial.println("Device not supported with this code");  // NT3H is 7-byte UID. Mifare Classic not supported to save the memory.
-                                                              // Comment 4-byte stuff: 
-//	  
-//      // Now we need to try to authenticate it for read/write access
-//      // Try with the factory default KeyA: 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
-//      Serial.println("Trying to authenticate block 4 with default KEYA value");
-//      uint8_t keya[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-//	  
-//	  // Start with block 4 (the first block of sector 1) since sector 0
-//	  // contains the manufacturer data and it's probably better just
-//	  // to leave it alone unless you know what you're doing
-//      success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, 4, 0, keya);
-//	  
-//      if (success)
-//      {
-//        Serial.println("Sector 1 (Blocks 4..7) has been authenticated");
-//        uint8_t data[16];
-//		
-//        // If you want to write something to block 4 to test with, uncomment
-//		// the following line and this text should be read back in a minute
-//        //memcpy(data, (const uint8_t[]){ 'a', 'd', 'a', 'f', 'r', 'u', 'i', 't', '.', 'c', 'o', 'm', 0, 0, 0, 0 }, sizeof data);
-//        // success = nfc.mifareclassic_WriteDataBlock (4, data);
-//
-//        // Try to read the contents of block 4
-//        success = nfc.mifareclassic_ReadDataBlock(4, data);
-//		
-//        if (success)
-//        {
-//          // Data seems to have been read ... spit it out
-//          Serial.println("Reading Block 4:");
-//          nfc.PrintHexChar(data, 16);
-//          Serial.println("");
-//		  
-//          // Wait a bit before reading the card again
-//          delay(1000);
-//        }
-//        else
-//        {
-//          Serial.println("Ooops ... unable to read the requested block.  Try another key?");
-//        }
-//      }
-//      else
-//      {
-//        Serial.println("Ooops ... authentication failed: Try another key?");
-//      }
     }
     
     if (uidLength == 7)
     {
-      // We probably have a Mifare Ultralight card ...
-      Serial.println("Seems to be a Mifare Ultralight tag (7 byte UID)"); // NT3H detected
-	  
-      // Try to read general-purpose user page 4 to 15
-      for (uint8_t pageNum = 4; pageNum <= 15; pageNum++){
-        Serial.print("Reading page ");
-        Serial.println(pageNum);
-        switch (pageNum) { // Reading stimulation parameters 
-          case 4:
-          Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
-          Serial.println("Default: 0 1 93 61");
-          break;
-        case 5:
-          Serial.println("Stimulation Time On (Duty Cycle): msec Byte, sec LB, sec HB; On/Off byte");
-          Serial.println("Default: 0 112 2 1");
-          break;
-        case 6:
-          Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim)");
-          Serial.println("Default: 63 2 0 0");
-          break;
-        case 8:
-          Serial.println("Current Stimulation Channel (channel scanning mode)");
-          break;
-        }
-        uint8_t data[numChars];
-        success = nfc.mifareultralight_ReadPage (pageNum, data);
-        if (success)
-        {
-          // Data seems to have been read ... spit it out
-          nfc.PrintHexChar(data, 4);
-          Serial.println("");		
-        // Wait a bit before reading the card again
-        //delay(1000);
-        }
-        else
-        {
-          Serial.println("Ooops ... unable to read the requested page!?");
-        }
-      }
-      
-      // Try to write the specified data to the specified page
-      
-      // Select the page to write
+      // We probably have a 7 byte UID Mifare Ultralight card ...
+      Serial.println("sVNS implant detected (7 byte UID)"); // NT3H detected
+      // Wait for the command byte from the GUI
+      // Need to correctly receive the command word (byte by byte?)
+      while (!Serial.available());
+      recvWithStartEndMarkers(); 
+      parseData();
+      Serial.println(array_PW_Freq);  
+      Serial.println(array_T_on_on);
+      Serial.println(array_Iset_mode_ch);
+      confirm();
+      // Break the command byte into bytes and write individually into the corresponding address
 
-      uint8_t pageWr;
+      // Try to write the specified data to the specified page
+      // for (byte page_num = 4; page_num < 7; page_num++)
+      //   for (byte i = 0; i < 4; i++)
+      //   // array data
+      //   nfc.mifareultralight_WritePage(page_num, command_byte[k]);
+      //   k++;
+
+
+     // Serial.print("\nWill write to the page: "); Serial.println(pageWr);
+     // confirm();
+
+     // Select the page to write
+      
+/*      uint8_t pageWr;
       Serial.println("\n\n1) Enter the page to write");
       receiveNumber();
       pageWr = saveNumber();
-      Serial.print("\nWill write to the page: "); Serial.println(pageWr);
-      confirm();
+
 
       // Create data to write to the selected page
 
@@ -255,35 +198,99 @@ void loop(void) {
 
       nfc.mifareultralight_WritePage(pageWr, dataWr);
 
+*/
+      // Try to read general-purpose user page 4 to 15
+      for (uint8_t pageNum = 4; pageNum <= 15; pageNum++){
+        Serial.print("Reading page ");
+        Serial.println(pageNum);
+        switch (pageNum) { // Reading stimulation parameters 
+          case 4:
+          Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
+          break;
+        case 5:
+          Serial.println("Stimulation Time On (Duty Cycle): msec Byte, sec LB, sec HB; On/Off byte");
+          break;
+        case 6:
+          Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim)");
+          break;
+        case 8:
+          Serial.println("Current Stimulation Channel (channel scanning mode)");
+          break;
+        }
+        uint8_t data[numChars];
+        success = nfc.mifareultralight_ReadPage (pageNum, data);
+        if (success)
+        {
+          // Data seems to have been read ... spit it out
+          nfc.PrintHexChar(data, 4);
+          Serial.println("");		
+        }
+        else
+        {
+          Serial.println("Ooops ... unable to read the requested page!?");
+        }
+      }
+      
+
       delay(1000);
     }
   }
 }
 
 // Function to store the Serial Input to the string array
-void receiveNumber() {
+void recvWithStartEndMarkers() {
+    static boolean recvInProgress = false;
     static byte ndx = 0;
-    char endMarker = '\n';
+    char startMarker = '<';
+    char endMarker = '>';
     char rc;
-    Serial.flush();
+
     while (!Serial.available());
-    while (Serial.available()) {
+    while (Serial.available()>0 && newData == false) {
         delay(2);
         rc = Serial.read();
-
-        if (rc != endMarker) {
-            receivedChars[ndx] = rc;
-            ndx++;
-            if (ndx >= numChars) {
-                ndx = numChars - 1;
-            }
+        if (recvInProgress == true) {
+          if (rc != endMarker) {
+              receivedChars[ndx] = rc;
+              ndx++;
+              if (ndx >= numChars) {
+                  ndx = numChars - 1;
+              }
+          }
+          else {
+              receivedChars[ndx] = '\0'; // terminate the string
+              recvInProgress = false;
+              ndx = 0;
+              newData = true;
+          }
         }
-        else {
-            receivedChars[ndx] = '\0'; // terminate the string
-            ndx = 0;
-            newData = true;
+        else if (rc == startMarker){
+          recvInProgress = true;
         }
     }
+}
+
+void parseData() {
+  uint8_t k = 1; // local counter for the command word slicing
+  char * strtokIndx;
+  strtokIndx = strtok(tempChars,",");
+  array_PW_Freq[0] = atoi(strtokIndx);
+  for (uint8_t ii = 1; ii < 4; ii++) { 
+    strtokIndx = strtok(NULL,",");
+    array_PW_Freq[k] = atoi(strtokIndx);
+    k++;
+  }
+  for (uint8_t ii = 0; ii < 4; ii++) {
+    strtokIndx = strtok(NULL,",");
+    array_T_on_on[k] = atoi(strtokIndx);
+    k++;
+  }
+  for (uint8_t ii = 0; ii < 3; ii++) {
+    strtokIndx = strtok(NULL,",");
+    array_Iset_mode_ch[k] = atoi(strtokIndx);
+    k++;
+  }
+  array_Iset_mode_ch[3] = 0;
 }
 
 // Function to convert the string array input to the integer
