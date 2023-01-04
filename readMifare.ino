@@ -80,18 +80,17 @@ products from Adafruit!
 // Or use this line for a breakout or shield with an I2C connection:
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
-// variables and constants for the Serial Read handling
-//const byte numChars = 32;     // Number of bytes for the array
-const byte numChars = 13;
+// variables and constants for the Serial Read handling   
+const byte numChars = 32; // Number of bytes for the array
 char receivedChars[numChars]; // Array to store received characters from Serial Read
-char tempChars[numChars]; // Temporary array for parsing
+char *tempChars[numChars]; // Temporary array for parsing
+char *ptr = NULL;
+byte index = 0;
 boolean newData = false;      // Needed to detect new input from the Serial Mon
-char array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
-char array_T_on_on[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
-char array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
-
-uint8_t dataNumber = 0;       
-
+int array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
+int array_T_on_on[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
+int array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
+      
 void setup(void) {
   Serial.begin(115200);
   while (!Serial) delay(10); // for Leonardo/Micro/Zero
@@ -147,15 +146,10 @@ void loop(void) {
       // We probably have a 7 byte UID Mifare Ultralight card ...
       Serial.println("sVNS implant detected (7 byte UID)"); // NT3H detected
       // Wait for the command byte from the GUI
-      // Need to correctly receive the command word (byte by byte?)
       while (!Serial.available());
-      recvWithStartEndMarkers(); 
-      parseData();
-      Serial.println(array_PW_Freq);  
-      Serial.println(array_T_on_on);
-      Serial.println(array_Iset_mode_ch);
-      confirm();
-      // Break the command byte into bytes and write individually into the corresponding address
+      recvWithStartEndMarkers(); // Receive command word from Serial Interface
+      arrayParse(); // Create memory integer arrays for the sVNS implant 
+      // Write arrays
 
       // Try to write the specified data to the specified page
       // for (byte page_num = 4; page_num < 7; page_num++)
@@ -238,6 +232,19 @@ void loop(void) {
 }
 
 // Function to store the Serial Input to the string array
+
+// Confirmation function to hold the loop
+void confirm() {
+    // Wait any user input before proceeding
+  Serial.println("\n\nSend any character via 'Send' or press Enter once to proceed");
+  while (!Serial.available());
+  while (Serial.available()) {
+    delay(2);
+  Serial.read();
+  }
+}
+
+// Function to store the Serial Input to the string array
 void recvWithStartEndMarkers() {
     static boolean recvInProgress = false;
     static byte ndx = 0;
@@ -270,53 +277,28 @@ void recvWithStartEndMarkers() {
     }
 }
 
-void parseData() {
-  uint8_t k = 1; // local counter for the command word slicing
-  char * strtokIndx;
-  strtokIndx = strtok(tempChars,",");
-  array_PW_Freq[0] = atoi(strtokIndx);
-  for (uint8_t ii = 1; ii < 4; ii++) { 
-    strtokIndx = strtok(NULL,",");
-    array_PW_Freq[k] = atoi(strtokIndx);
+void arrayParse() {
+  ptr = strtok(receivedChars,",");
+  while (ptr != NULL) {
+    tempChars[index] = ptr;
+    index++;
+    ptr = strtok(NULL,",");
+  }
+  uint8_t k = 0;
+  for (uint8_t ii = 0; ii < 4; ii++) {
+    array_PW_Freq[ii] = atoi(tempChars[k]);
+    Serial.println(array_PW_Freq[ii]);
     k++;
   }
   for (uint8_t ii = 0; ii < 4; ii++) {
-    strtokIndx = strtok(NULL,",");
-    array_T_on_on[k] = atoi(strtokIndx);
+    array_T_on_on[ii] = atoi(tempChars[k]);
+    Serial.println(array_T_on_on[ii]);
     k++;
   }
-  for (uint8_t ii = 0; ii < 3; ii++) {
-    strtokIndx = strtok(NULL,",");
-    array_Iset_mode_ch[k] = atoi(strtokIndx);
+  for (uint8_t ii = 0; ii < 4; ii++) {
+    array_Iset_mode_ch[ii] = atoi(tempChars[k]);
+    Serial.println(array_Iset_mode_ch[ii]);
     k++;
   }
-  array_Iset_mode_ch[3] = 0;
-}
-
-// Function to convert the string array input to the integer
-uint8_t saveNumber() {
-    if (newData == true) {
-        dataNumber = 0;             // new for this version
-        dataNumber = atoi(receivedChars);   // new for this version
-        Serial.print("\nThe following input has been received on the Serial Monitor: ");
-        Serial.println(receivedChars);
-        Serial.print("\nData represented as a Number ... ");
-        Serial.println(dataNumber);     // new for this version
-        Serial.print("\nData represented as a HEX Number ... ");
-        Serial.println(dataNumber, HEX);     
-        
-        newData = false;
-    }
-    return dataNumber;
-}
-
-// Confirmation function to hold the loop
-void confirm() {
-    // Wait any user input before proceeding
-  Serial.println("\n\nSend any character via 'Send' or press Enter once to proceed");
-  while (!Serial.available());
-  while (Serial.available()) {
-    delay(2);
-  Serial.read();
-  }
+  array_Iset_mode_ch[4] = 0;
 }
