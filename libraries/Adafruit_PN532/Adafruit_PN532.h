@@ -14,6 +14,8 @@
 #define ADAFRUIT_PN532_H
 
 #include "Arduino.h"
+
+#include <Adafruit_I2CDevice.h>
 #include <Adafruit_SPIDevice.h>
 
 #define PN532_PREAMBLE (0x00)   ///< Command sequence start, byte 1/3
@@ -139,10 +141,15 @@
 class Adafruit_PN532 {
 public:
   Adafruit_PN532(uint8_t clk, uint8_t miso, uint8_t mosi,
-                 uint8_t ss);                 // Software SPI
-  Adafruit_PN532(uint8_t irq, uint8_t reset); // Hardware I2C
-  Adafruit_PN532(uint8_t ss);                 // Hardware SPI
-  void begin(void);
+                 uint8_t ss);                          // Software SPI
+  Adafruit_PN532(uint8_t ss, SPIClass *theSPI = &SPI); // Hardware SPI
+  Adafruit_PN532(uint8_t irq, uint8_t reset,
+                 TwoWire *theWire = &Wire);              // Hardware I2C
+  Adafruit_PN532(uint8_t reset, HardwareSerial *theSer); // Hardware UART
+  bool begin(void);
+
+  void reset(void);
+  void wakeup(void);
 
   // Generic PN532 functions
   bool SAMConfig(void);
@@ -193,7 +200,7 @@ public:
   static void PrintHexChar(const byte *pbtData, const uint32_t numBytes);
 
 private:
-  int8_t _irq = -1, _reset = -1;
+  int8_t _irq = -1, _reset = -1, _cs = -1;
   int8_t _uid[7];      // ISO14443A uid
   int8_t _uidLen;      // uid len
   int8_t _key[6];      // Mifare Classic key
@@ -206,11 +213,9 @@ private:
   bool waitready(uint16_t timeout);
   bool readack();
 
-  // SPI-specific functions.
   Adafruit_SPIDevice *spi_dev = NULL;
-
-  // Note there are i2c_read and i2c_write inline functions defined in the .cpp
-  // file.
+  Adafruit_I2CDevice *i2c_dev = NULL;
+  HardwareSerial *ser_dev = NULL;
 };
 
 #endif
