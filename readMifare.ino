@@ -147,6 +147,10 @@ void loop(void) {
       Serial.println("sVNS implant detected (7 byte UID)"); // NT3H detected
       // Wait for the command byte from the GUI
       // while (!Serial.available()); already included in the recvWithStartEndMarkers
+
+      Serial.println("Enter the programming string in format:");
+      Serial.println("<PW_HB,PW_LB,T_HB,T_LB,T_on_HB,T_on_LB,On/OFF,Iset,Mode,Channel_Nr,Telemetry On/Off>");
+
       recvWithStartEndMarkers(); // Receive command word from Serial Interface
       arrayParse(); // Create memory integer arrays for the sVNS implant 
       // Write arrays
@@ -269,5 +273,5 @@ void arrayParse() {
     k++;
   }
   array_Iset_mode_ch[4] = 0;
-  Serial.println(chksum_arduino);
+  //Serial.println(chksum_arduino);
 }
