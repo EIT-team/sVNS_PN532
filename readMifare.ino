@@ -81,17 +81,20 @@ products from Adafruit!
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
 // variables and constants for the Serial Read handling   
-const byte numChars = 32; // Number of bytes for the array
+const byte numChars = 64; // Number of bytes for the array
 char receivedChars[numChars]; // Array to store received characters from Serial Read
-char *tempChars[numChars]; // Temporary array for parsing
-char *ptr = NULL;
+char tempChars[numChars]; // Temporary array for parsing
+//char *ptr = NULL;
 byte index = 0;
 boolean newData = false;      // Needed to detect new input from the Serial Mon
+boolean memoryWritten = 0;    // Boolean to prevent multiple writings each time connection is lost
 uint8_t array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
 uint8_t array_T_on_on[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
 uint8_t array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
+uint8_t channel_nr;
       
 void setup(void) {
+  pinMode(13, OUTPUT);
   Serial.begin(115200);
   while (!Serial) delay(10); // for Leonardo/Micro/Zero
 
@@ -136,7 +139,7 @@ void loop(void) {
     
     if (uidLength == 4)
     {
-      // We probably have a Mifare Classic card ... 
+      // We probably have a Mifare Classic card ... value > 5 : ! successs
       Serial.println("Seems to be a Mifare Classic card (4 byte UID)");
       Serial.println("Device not supported with this code");  // NT3H is 7-byte UID. Mifare Classic not supported to save the memory.
     }
@@ -145,23 +148,29 @@ void loop(void) {
     {
       // We probably have a 7 byte UID Mifare Ultralight card ...
       Serial.println("sVNS implant detected (7 byte UID)"); // NT3H detected
+      recvWithStartEndMarkers();
       // Wait for the command byte from the GUI
       // while (!Serial.available()); already included in the recvWithStartEndMarkers
+      if (!memoryWritten) {
+        Serial.println("Enter the programming string in format:");
+        Serial.println("<PW_HB,PW_LB,T_HB,T_LB,T_on_HB,T_on_LB,0,On/OFF,Iset,Mode,Channel_Nr,Telemetry On/Off>");
 
-      Serial.println("Enter the programming string in format:");
-      Serial.println("<PW_HB,PW_LB,T_HB,T_LB,T_on_HB,T_on_LB,On/OFF,Iset,Mode,Channel_Nr,Telemetry On/Off>");
-
-      recvWithStartEndMarkers(); // Receive command word from Serial Interface
-      arrayParse(); // Create memory integer arrays for the sVNS implant 
-      // Write arrays
-      nfc.mifareultralight_WritePage(4, array_PW_Freq);
-      nfc.mifareultralight_WritePage(5, array_T_on_on);
-      nfc.mifareultralight_WritePage(6, array_Iset_mode_ch);
-  
+        recvWithStartEndMarkers(); // Receive command word from Serial Interface
+        if (newData == true) {
+          strcpy(tempChars, receivedChars);
+          arrayParse(); // Create memory integer arrays for the sVNS implant 
+          // Write arrays
+          nfc.mifareultralight_WritePage(4, array_PW_Freq);
+          nfc.mifareultralight_WritePage(5, array_T_on_on);
+          nfc.mifareultralight_WritePage(6, array_Iset_mode_ch);
+          memoryWritten = 1;
+          newData = false;
+        }
+      }
       // What happens to arrays after writing?    
 
       // Try to read general-purpose user page 4 to 15
-      for (uint8_t pageNum = 4; pageNum <= 15; pageNum++){
+      for (uint8_t pageNum = 4; pageNum <= 8; pageNum++){
         Serial.print("Reading page ");
         Serial.println(pageNum);
         switch (pageNum) { // Reading stimulation parameters 
@@ -169,13 +178,16 @@ void loop(void) {
           Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
           break;
         case 5:
-          Serial.println("Stimulation Time On (Duty Cycle): HB, LB; On/Off byte");
+          Serial.println("Stimulation Time On (Duty Cycle): HB, LB; 0; On/Off byte");
           break;
         case 6:
-          Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim)");
+          Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim); Enable/Disable telemetry");
+          break;
+        case 7:
+          Serial.println("Page 7:");
           break;
         case 8:
-          Serial.println("Current Stimulation Channel (channel scanning mode); Enable/Disable telemetry");
+          Serial.println("Page 8:");
           break;
         }
         uint8_t data[numChars];
@@ -186,15 +198,25 @@ void loop(void) {
           nfc.PrintHexChar(data, 4);
           // implement checksum for the selected page here
           Serial.println("");		
+          if (pageNum == 8) {
+            if (data[0] != channel_nr) {
+               digitalWrite(13, HIGH);
+               delay(2);
+               digitalWrite(13, LOW);
+            }
+            channel_nr = data[0];
+            Serial.println("Channel number is ");
+            Serial.println(channel_nr);
+          }
         }
         else
         {
           Serial.println("Ooops ... unable to read the requested page!?");
         }
       }
-      
 
-      delay(1000);
+
+      //delay(1000);
     }
   }
 }
@@ -246,32 +268,36 @@ void recvWithStartEndMarkers() {
 }
 
 void arrayParse() {
+  char * strtokIndx; // this is used by strtok() as an index
   int chksum_arduino = 0;
-  ptr = strtok(receivedChars,",");
-  while (ptr != NULL) {
-    tempChars[index] = ptr;
-    index++;
-    ptr = strtok(NULL,",");
-  }
   uint8_t k = 0;
-  for (uint8_t ii = 0; ii < 4; ii++) {
-    array_PW_Freq[ii] = atoi(tempChars[k]);
+
+  strtokIndx = strtok(tempChars,",");      // get the first part
+  array_PW_Freq[0] = atoi(strtokIndx);
+  Serial.println(array_PW_Freq[0]);
+  k++;
+
+  for (uint8_t ii = 1; ii < 4; ii++) {
+    strtokIndx = strtok(NULL,",");
+    array_PW_Freq[ii] = atoi(strtokIndx);
     Serial.println(array_PW_Freq[ii]);
     chksum_arduino += tempChars[k];
     k++;
   }
   for (uint8_t ii = 0; ii < 4; ii++) {
-    array_T_on_on[ii] = atoi(tempChars[k]);
+    strtokIndx = strtok(NULL,",");
+    array_T_on_on[ii] = atoi(strtokIndx);
     Serial.println(array_T_on_on[ii]);
     chksum_arduino += tempChars[k];
     k++;
   }
   for (uint8_t ii = 0; ii < 4; ii++) {
-    array_Iset_mode_ch[ii] = atoi(tempChars[k]);
+    strtokIndx = strtok(NULL,",");
+    array_Iset_mode_ch[ii] = atoi(strtokIndx);
     Serial.println(array_Iset_mode_ch[ii]);
     chksum_arduino += tempChars[k];
     k++;
   }
-  array_Iset_mode_ch[4] = 0;
+  //array_Iset_mode_ch[4] = 0;
   //Serial.println(chksum_arduino);
 }
