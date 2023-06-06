@@ -85,16 +85,20 @@ const byte numChars = 64; // Number of bytes for the array
 char receivedChars[numChars]; // Array to store received characters from Serial Read
 char tempChars[numChars]; // Temporary array for parsing
 //char *ptr = NULL;
-byte index = 0;
+//byte index = 0;
 boolean newData = false;      // Needed to detect new input from the Serial Mon
-boolean memoryWritten = 0;    // Boolean to prevent multiple writings each time connection is lost
+//boolean memoryWritten = 0;    // Boolean to prevent multiple writings each time connection is lost
 uint8_t array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
 uint8_t array_T_on_on[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
 uint8_t array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
-uint8_t channel_nr;
+uint8_t success;
+uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
+uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+  
       
 void setup(void) {
   pinMode(13, OUTPUT);
+  digitalWrite(13, LOW);
   Serial.begin(115200);
   while (!Serial) delay(10); // for Leonardo/Micro/Zero
 
@@ -120,10 +124,7 @@ void setup(void) {
 
 
 void loop(void) {
-  uint8_t success;
-  uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
-  uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
-    
+
   // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
   // 'uid' will be populated with the UID, and uidLength will indicate
   // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
@@ -147,91 +148,120 @@ void loop(void) {
     if (uidLength == 7)
     {
       // We probably have a 7 byte UID Mifare Ultralight card ...
-      Serial.println("sVNS implant detected (7 byte UID)"); // NT3H detected
-      recvWithStartEndMarkers();
-      // Wait for the command byte from the GUI
-      // while (!Serial.available()); already included in the recvWithStartEndMarkers
-      if (!memoryWritten) {
-        Serial.println("Enter the programming string in format:");
-        Serial.println("<PW_HB,PW_LB,T_HB,T_LB,T_on_HB,T_on_LB,0,On/OFF,Iset,Mode,Channel_Nr,Telemetry On/Off>");
-
-        recvWithStartEndMarkers(); // Receive command word from Serial Interface
-        if (newData == true) {
-          strcpy(tempChars, receivedChars);
-          arrayParse(); // Create memory integer arrays for the sVNS implant 
-          // Write arrays
-          nfc.mifareultralight_WritePage(4, array_PW_Freq);
-          nfc.mifareultralight_WritePage(5, array_T_on_on);
-          nfc.mifareultralight_WritePage(6, array_Iset_mode_ch);
-          memoryWritten = 1;
-          newData = false;
-        }
-      }
-      // What happens to arrays after writing?    
-
-      // Try to read general-purpose user page 4 to 15
-      for (uint8_t pageNum = 4; pageNum <= 8; pageNum++){
-        Serial.print("Reading page ");
-        Serial.println(pageNum);
-        switch (pageNum) { // Reading stimulation parameters 
-          case 4:
-          Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
-          break;
-        case 5:
-          Serial.println("Stimulation Time On (Duty Cycle): HB, LB; 0; On/Off byte");
-          break;
-        case 6:
-          Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim); Enable/Disable telemetry");
-          break;
-        case 7:
-          Serial.println("Page 7:");
-          break;
-        case 8:
-          Serial.println("Page 8:");
-          break;
-        }
-        uint8_t data[numChars];
-        success = nfc.mifareultralight_ReadPage (pageNum, data);
-        if (success)
-        {
-          // Data seems to have been read ... spit it out
-          nfc.PrintHexChar(data, 4);
-          // implement checksum for the selected page here
-          Serial.println("");		
-          if (pageNum == 8) {
-            if (data[0] != channel_nr) {
-               digitalWrite(13, HIGH);
-               delay(2);
-               digitalWrite(13, LOW);
-            }
-            channel_nr = data[0];
-            Serial.println("Channel number is ");
-            Serial.println(channel_nr);
-          }
-        }
-        else
-        {
-          Serial.println("Ooops ... unable to read the requested page!?");
-        }
-      }
-
-
-      //delay(1000);
+      Serial.println("sVNS implant detected (7 byte UID)\n"); // NT3H detected
+      modeSelect();
     }
+  }
+  else {
+    Serial.println("NFC contact lost");
   }
 }
 
 // Function to store the Serial Input to the string array
 
 // Confirmation function to hold the loop
-void confirm() {
-    // Wait any user input before proceeding
-  Serial.println("\n\nSend any character via 'Send' or press Enter once to proceed");
-  while (!Serial.available());
-  while (Serial.available()) {
-    delay(2);
-  Serial.read();
+// void confirm() {
+//     // Wait any user input before proceeding
+//   Serial.println("\n\nSend any character via 'Send' or press Enter once to proceed");
+//   while (!Serial.available());
+//   while (Serial.available()) {
+//     delay(2);
+//   Serial.read();
+//   }
+// }
+void modeSelect() {
+ // char * strtokIndx; // this is used by strtok() as an index
+  uint8_t mode;
+  Serial.println("<0> = read all memory once; <1> = write to memory; <2> = read all memory until restart; <3> = read stim channels until restart");
+  
+  recvWithStartEndMarkers();
+
+  if (newData == true) {
+    //strcpy(tempChars, receivedChars);
+    mode = atoi(receivedChars);
+    Serial.println("Mode selected: ");
+    Serial.println(mode);
+    switch (mode) {
+      case 0:
+        memRead();
+        break;
+      case 1:
+        memWrite();
+        break;
+      case 2:
+        while (1) {
+          memRead();
+        }
+        break;
+      case 3:
+        nfc.reset(); nfc.begin();
+        memReadTrigger();
+        break;
+    }
+    newData = false;
   }
+}
+
+void memRead() {
+    // Try to read general-purpose user page 4 to 8
+  for (uint8_t pageNum = 4; pageNum <= 8; pageNum++){
+    Serial.print("Reading page ");
+    Serial.println(pageNum);
+    switch (pageNum) { // Reading stimulation parameters 
+      case 4:
+      Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
+      break;
+      case 5:
+      Serial.println("Stimulation Time On (Duty Cycle): HB, LB; 0; On/Off byte");
+      break;
+     case 6:
+      Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim); Enable/Disable telemetry");
+      break;
+      case 7:
+      Serial.println("Page 7:");
+      break;
+      case 8:
+      Serial.println("Page 8:");
+      break;
+    }
+    uint8_t data[32];
+    success = nfc.mifareultralight_ReadPage (pageNum, data);
+    if (success)
+    {
+      // Data seems to have been read ... spit it out
+      nfc.PrintHexChar(data, 4);
+      // implement checksum for the selected page here
+      Serial.println("");		
+
+    }
+    else
+    {
+      Serial.println("Ooops ... unable to read the requested page!?");
+      nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // read the tag again
+    }
+  }
+}
+
+void memWrite() {
+  // Ensure the serial input buffer is empty to not write garbage into memory
+  // while (Serial.available() > 0) {
+  //   Serial.read();
+  // }
+  newData = false; // needs to be reset because is true from the previous entry before entering the function
+  Serial.println("Enter the programming string in format:");
+  Serial.println("<PW_HB,PW_LB,T_HB,T_LB,T_on_HB,T_on_LB,0,On/OFF,Iset,Mode,Channel_Nr,Telemetry On/Off>");
+  recvWithStartEndMarkers(); // Receive command word from Serial Interface
+  if (newData == true) {
+    strcpy(tempChars, receivedChars);
+    arrayParse(); // Create memory integer arrays for the sVNS implant 
+    // Write arrays
+    nfc.mifareultralight_WritePage(4, array_PW_Freq);
+    nfc.mifareultralight_WritePage(5, array_T_on_on);
+    nfc.mifareultralight_WritePage(6, array_Iset_mode_ch);
+    newData = false;
+  }
+  delay(50);
+  nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
 }
 
 // Function to store the Serial Input to the string array
@@ -300,4 +330,35 @@ void arrayParse() {
   }
   //array_Iset_mode_ch[4] = 0;
   //Serial.println(chksum_arduino);
+}
+
+void memReadTrigger() {
+  uint8_t data[32];
+  uint8_t pageNum = 8;
+  uint8_t channel_nr = 100; // assign a non-existing channel to make the trigger work when the first channel (0) is read 
+ // bool zero_state = 0;
+  while (1) {
+  success = nfc.mifareultralight_ReadPage (pageNum, data); // read stimulation channel data
+    if (success) // NFC page 8 read ok
+    {
+      if (data[0] != channel_nr) { // channel changed
+          digitalWrite(13, HIGH);
+          delay(2);
+          Serial.println("Channel changed");
+          digitalWrite(13, LOW);
+      }      
+      // if (channel_nr == 0 && !zero_state) { // first time read channel 0
+      //   zero_state = 1;
+      //   digitalWrite(13, HIGH);
+      //   delay(2);
+      //   digitalWrite(13, LOW);
+      // }
+      channel_nr = data[0]; // save channel number in memory
+      Serial.println("Currently stimulating channel "); Serial.println(channel_nr);
+    }
+    else { // NFC page 8 read error
+      Serial.println("Communication error");
+      nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Re-read if error in comms
+    }
+  }
 }
