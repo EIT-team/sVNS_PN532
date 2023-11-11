@@ -94,7 +94,8 @@ uint8_t array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mod
 uint8_t success;
 uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
 uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
-  
+bool writeResult;
+bool stimProtect = 0;  
       
 void setup(void) {
   pinMode(13, OUTPUT);
@@ -124,13 +125,15 @@ void setup(void) {
 
 
 void loop(void) {
-
+  
   // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
   // 'uid' will be populated with the UID, and uidLength will indicate
   // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
   success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
   
   if (success) {
+    uint8_t def_string[4] = {0,0,0,0};
+
     // Display some basic information about the card
     Serial.println("Found an ISO14443A card");
     Serial.print("  UID Length: ");Serial.print(uidLength, DEC);Serial.println(" bytes");
@@ -147,6 +150,20 @@ void loop(void) {
     
     if (uidLength == 7)
     {
+      if (stimProtect == 0) {
+        // As soon as the device found try to stop stimulation
+        
+        writeResult = nfc.mifareultralight_WritePage(5, def_string);
+        Serial.println("Write status: "); Serial.print(writeResult); Serial.print("\n");
+        delay(50); // Wait to rectify error states
+
+        nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
+        delay(1);
+        // Experiment with reset and begin. Possibly this:
+        nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+        stimProtect = 1;
+      }
+
       // We probably have a 7 byte UID Mifare Ultralight card ...
       Serial.println("sVNS implant detected (7 byte UID)\n"); // NT3H detected
       modeSelect();
@@ -189,13 +206,16 @@ void modeSelect() {
         memWrite();
         break;
       case 2:
-        while (1) {
+        nfc.reset(); nfc.begin();
+        while (Serial.available() == 0) {
           memRead();
         }
+        stimProtect = 0;
         break;
       case 3:
         nfc.reset(); nfc.begin();
         memReadTrigger();
+        stimProtect = 0;
         break;
     }
     newData = false;
@@ -225,6 +245,7 @@ void memRead() {
       break;
     }
     uint8_t data[32];
+
     success = nfc.mifareultralight_ReadPage (pageNum, data);
     if (success)
     {
@@ -255,13 +276,18 @@ void memWrite() {
     strcpy(tempChars, receivedChars);
     arrayParse(); // Create memory integer arrays for the sVNS implant 
     // Write arrays
-    nfc.mifareultralight_WritePage(4, array_PW_Freq);
-    nfc.mifareultralight_WritePage(5, array_T_on_on);
-    nfc.mifareultralight_WritePage(6, array_Iset_mode_ch);
+    writeResult = nfc.mifareultralight_WritePage(4, array_PW_Freq); Serial.println("Write result: "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on); Serial.println("Write result: "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(6, array_Iset_mode_ch); Serial.println("Write result: "); Serial.println(writeResult);
     newData = false;
   }
   delay(50);
-  nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
+  //nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
+  //nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // read the tag again
+  // memReadTrigger();
+  // while(Serial.available()==0) { 
+  //   memRead();
+  // }
 }
 
 // Function to store the Serial Input to the string array
@@ -337,7 +363,7 @@ void memReadTrigger() {
   uint8_t pageNum = 8;
   uint8_t channel_nr = 100; // assign a non-existing channel to make the trigger work when the first channel (0) is read 
  // bool zero_state = 0;
-  while (1) {
+  while (Serial.available() == 0) {
   success = nfc.mifareultralight_ReadPage (pageNum, data); // read stimulation channel data
     if (success) // NFC page 8 read ok
     {
