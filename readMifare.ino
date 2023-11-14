@@ -364,27 +364,28 @@ void memReadTrigger() {
   uint8_t channel_nr = 100; // assign a non-existing channel to make the trigger work when the first channel (0) is read 
  // bool zero_state = 0;
   while (Serial.available() == 0) {
+    delay(100);
   success = nfc.mifareultralight_ReadPage (pageNum, data); // read stimulation channel data
-    if (success) // NFC page 8 read ok
-    {
-      if (data[0] != channel_nr) { // channel changed
-          digitalWrite(13, HIGH);
-          delay(2);
-          Serial.println("Channel changed");
-          digitalWrite(13, LOW);
-      }      
-      // if (channel_nr == 0 && !zero_state) { // first time read channel 0
-      //   zero_state = 1;
-      //   digitalWrite(13, HIGH);
-      //   delay(2);
-      //   digitalWrite(13, LOW);
-      // }
-      channel_nr = data[0]; // save channel number in memory
-      Serial.println("Currently stimulating channel "); Serial.println(channel_nr);
-    }
-    else { // NFC page 8 read error
-      Serial.println("Communication error");
-      nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Re-read if error in comms
-    }
+      if (success) // NFC page 8 read ok
+      {
+        if (data[0] != channel_nr) { // channel changed
+            digitalWrite(13, HIGH);
+            delay(2);
+            //Serial.println("Channel changed");
+            Serial.println("Currently stimulating channel "); Serial.println(data[0]);
+            digitalWrite(13, LOW);
+        }      
+        // if (channel_nr == 0 && !zero_state) { // first time read channel 0
+        //   zero_state = 1;
+        //   digitalWrite(13, HIGH);
+        //   delay(2);
+        //   digitalWrite(13, LOW);
+        // }
+        channel_nr = data[0]; // save channel number in memory
+      }
+      else { // NFC page 8 read error
+        Serial.println("Communication error");
+        nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Re-read if error in comms
+      }
   }
 }
