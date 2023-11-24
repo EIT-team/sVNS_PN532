@@ -245,7 +245,7 @@ void memRead() {
       break;
     }
     uint8_t data[32];
-
+    delay(200);
     success = nfc.mifareultralight_ReadPage (pageNum, data);
     if (success)
     {
