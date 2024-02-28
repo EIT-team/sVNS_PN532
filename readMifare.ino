@@ -154,7 +154,7 @@ void loop(void) {
         // As soon as the device found try to stop stimulation
         
         writeResult = nfc.mifareultralight_WritePage(5, def_string);
-        Serial.println("Write status: "); Serial.print(writeResult); Serial.print("\n");
+        Serial.println("Device rebooted: "); Serial.print(writeResult); Serial.print("\n");
         delay(50); // Wait to rectify error states
 
         nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
@@ -206,14 +206,15 @@ void modeSelect() {
         memWrite();
         break;
       case 2:
-        nfc.reset(); nfc.begin();
+        nfc.reset(); nfc.begin(); // this reboots the device to boot the stimulation parameters
         while (Serial.available() == 0) {
           memRead();
+          delay(800); // delay of additional 800 ms to prevent cluttering of the serial interface
         }
         stimProtect = 0;
         break;
       case 3:
-        nfc.reset(); nfc.begin();
+        nfc.reset(); nfc.begin(); // this reboots the device to boot the stimulation parameters
         memReadTrigger();
         stimProtect = 0;
         break;
@@ -276,9 +277,9 @@ void memWrite() {
     strcpy(tempChars, receivedChars);
     arrayParse(); // Create memory integer arrays for the sVNS implant 
     // Write arrays
-    writeResult = nfc.mifareultralight_WritePage(4, array_PW_Freq); Serial.println("Write result: "); Serial.println(writeResult);
-    writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on); Serial.println("Write result: "); Serial.println(writeResult);
-    writeResult = nfc.mifareultralight_WritePage(6, array_Iset_mode_ch); Serial.println("Write result: "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(4, array_PW_Freq); Serial.println("PW and Freq written? "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on); Serial.println("Stim time and On bit written? "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(6, array_Iset_mode_ch); Serial.println("Current, mode and channel written? "); Serial.println(writeResult);
     newData = false;
   }
   delay(50);
@@ -384,7 +385,7 @@ void memReadTrigger() {
         channel_nr = data[0]; // save channel number in memory
       }
       else { // NFC page 8 read error
-        Serial.println("Communication error");
+        //Serial.println("Communication error");
         nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Re-read if error in comms
       }
   }
