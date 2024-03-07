@@ -89,8 +89,8 @@ char tempChars[numChars]; // Temporary array for parsing
 boolean newData = false;      // Needed to detect new input from the Serial Mon
 //boolean memoryWritten = 0;    // Boolean to prevent multiple writings each time connection is lost
 uint8_t array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
-uint8_t array_T_on_on[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
-uint8_t array_Iset_mode_ch[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
+uint8_t array_T_on_on_Iset[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
+uint8_t array_mode_ch_tel[4]; // array 3 for current amplitude, stimulation mode, stimulation channel
 uint8_t success;
 uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
 uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
@@ -103,7 +103,7 @@ void setup(void) {
   Serial.begin(115200);
   while (!Serial) delay(10); // for Leonardo/Micro/Zero
 
-  Serial.println("Hello!");
+  // Serial.println("Hello!");
 
   nfc.begin();
 
@@ -113,14 +113,14 @@ void setup(void) {
     while (1); // halt
   }
   // Got ok data, print it out!
-  Serial.print("Found chip PN5"); Serial.println((versiondata>>24) & 0xFF, HEX); 
-  Serial.print("Firmware ver. "); Serial.print((versiondata>>16) & 0xFF, DEC); 
-  Serial.print('.'); Serial.println((versiondata>>8) & 0xFF, DEC);
+  // Serial.print("Found chip PN5"); Serial.println((versiondata>>24) & 0xFF, HEX); 
+  // Serial.print("Firmware ver. "); Serial.print((versiondata>>16) & 0xFF, DEC); 
+  // Serial.print('.'); Serial.println((versiondata>>8) & 0xFF, DEC);
   
   // configure board to read RFID tags
   nfc.SAMConfig();
   
-  Serial.println("Waiting for an ISO14443A Card ...");
+  // Serial.println("Waiting for an ISO14443A Card ...");
 }
 
 
@@ -154,7 +154,7 @@ void loop(void) {
         // As soon as the device found try to stop stimulation
         
         writeResult = nfc.mifareultralight_WritePage(5, def_string);
-        Serial.println("Device rebooted: "); Serial.print(writeResult); Serial.print("\n");
+        Serial.println("Device initialized: "); Serial.print(writeResult); Serial.print("\n");
         delay(50); // Wait to rectify error states
 
         nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
@@ -233,10 +233,10 @@ void memRead() {
       Serial.println("Pulse Width: HB, LB; Pulse Frequency: HB, LB");
       break;
       case 5:
-      Serial.println("Stimulation Time On (Duty Cycle): HB, LB; 0; On/Off byte");
+      Serial.println("Stimulation Time On (Duty Cycle): HB, LB; On/Off byte; Current Amplitude");
       break;
      case 6:
-      Serial.println("Current Amplitude; Stimulation Mode; Stimulation Channel (For Single-Channel Stim); Enable/Disable telemetry");
+      Serial.println("Stimulation Mode; Stimulation Channel (For Single-Channel Stim); Enable/Disable telemetry");
       break;
       case 7:
       Serial.println("Page 7:");
@@ -278,8 +278,8 @@ void memWrite() {
     arrayParse(); // Create memory integer arrays for the sVNS implant 
     // Write arrays
     writeResult = nfc.mifareultralight_WritePage(4, array_PW_Freq); Serial.println("PW and Freq written? "); Serial.println(writeResult);
-    writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on); Serial.println("Stim time and On bit written? "); Serial.println(writeResult);
-    writeResult = nfc.mifareultralight_WritePage(6, array_Iset_mode_ch); Serial.println("Current, mode and channel written? "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on_Iset); Serial.println("Stim time, On bit, current ampl. written? "); Serial.println(writeResult);
+    writeResult = nfc.mifareultralight_WritePage(6, array_mode_ch_tel); Serial.println("Mode, channel, telemetry bit written? "); Serial.println(writeResult);
     newData = false;
   }
   delay(50);
@@ -343,15 +343,15 @@ void arrayParse() {
   }
   for (uint8_t ii = 0; ii < 4; ii++) {
     strtokIndx = strtok(NULL,",");
-    array_T_on_on[ii] = atoi(strtokIndx);
-    Serial.println(array_T_on_on[ii]);
+    array_T_on_on_Iset[ii] = atoi(strtokIndx);
+    Serial.println(array_T_on_on_Iset[ii]);
     chksum_arduino += tempChars[k];
     k++;
   }
   for (uint8_t ii = 0; ii < 4; ii++) {
     strtokIndx = strtok(NULL,",");
-    array_Iset_mode_ch[ii] = atoi(strtokIndx);
-    Serial.println(array_Iset_mode_ch[ii]);
+    array_mode_ch_tel[ii] = atoi(strtokIndx);
+    Serial.println(array_mode_ch_tel[ii]);
     chksum_arduino += tempChars[k];
     k++;
   }
