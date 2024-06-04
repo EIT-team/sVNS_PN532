@@ -154,7 +154,9 @@ void loop(void) {
         // As soon as the device found try to stop stimulation
         
         writeResult = nfc.mifareultralight_WritePage(5, def_string);
-        Serial.println("Device initialized: "); Serial.print(writeResult); Serial.print("\n");
+        Serial.println("Device initialized (erase5): "); Serial.print(writeResult); Serial.print("\n");
+        writeResult = nfc.mifareultralight_WritePage(6, def_string);
+        Serial.println("Device initialized (erase6): "); Serial.print(writeResult); Serial.print("\n");
         delay(50); // Wait to rectify error states
 
         nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
