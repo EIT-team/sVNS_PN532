@@ -372,11 +372,13 @@ void memReadTrigger() {
       if (success) // NFC page 8 read ok
       {
         if (data[0] != channel_nr) { // channel changed
-            digitalWrite(13, HIGH);
-            delay(2);
-            //Serial.println("Channel changed");
+          makeTrigger();
+          if (data[0] == 100) {
+            Serial.println("Stimulation off\n");  
+          }
+          else {
             Serial.println("Currently stimulating channel "); Serial.println(data[0]);
-            digitalWrite(13, LOW);
+          } 
         }      
         // if (channel_nr == 0 && !zero_state) { // first time read channel 0
         //   zero_state = 1;
@@ -391,4 +393,10 @@ void memReadTrigger() {
         nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Re-read if error in comms
       }
   }
+}
+
+void makeTrigger() {
+  digitalWrite(13,HIGH);
+  delay(2);
+  digitalWrite(13, LOW);
 }
