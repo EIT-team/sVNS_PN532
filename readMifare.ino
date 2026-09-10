@@ -382,8 +382,12 @@ void memReadTrigger() {
             {
                 makeTrigger();
                 if (stim_off) {
+                  // reconstruct voltage telemetry from data[1] (LB) and data[2] (HB):
+                    uint16_t voltage_mV = (data[2] << 8) | data[1];
                     Serial.print("Stimulation off, last channel: ");
                     Serial.println(channel);  // still know which channel!
+                    Serial.print(voltage_mV);
+                    Serial.println(" mV");
                 } else {
                     Serial.print("Currently stimulating channel ");
                     Serial.println(channel);
