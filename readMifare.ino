@@ -87,6 +87,8 @@ char tempChars[numChars]; // Temporary array for parsing
 //char *ptr = NULL;
 //byte index = 0;
 boolean newData = false;      // Needed to detect new input from the Serial Mon
+boolean recvInProgress = false;
+byte ndx = 0;
 //boolean memoryWritten = 0;    // Boolean to prevent multiple writings each time connection is lost
 uint8_t array_PW_Freq[4]; // array 1 for PW_HB, PW_LB, F_hz_HB, F_hz_LB
 uint8_t array_T_on_on_Iset[4]; // array 2 for T_on_0,T_on_1,T_on_2,ON
@@ -96,6 +98,18 @@ uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
 uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
 bool writeResult;
 bool stimProtect = 0;  
+unsigned long previousMillis = 0;
+
+// Define FSM:
+enum TransmitterState {
+  STATE_SEEKING_TAG,
+  STATE_IDLE,
+  STATE_WRITE_WAIT,
+  STATE_READ_LOOP,
+  STATE_TRIGGER_LOOP
+}; 
+
+TransmitterState currentState = STATE_SEEKING_TAG; 
       
 void setup(void) {
   pinMode(13, OUTPUT);
@@ -119,61 +133,93 @@ void setup(void) {
   
   // configure board to read RFID tags
   nfc.SAMConfig();
+  // Set timeout so seeking a tag does not permanently block the CPU
+  nfc.setPassiveActivationRetries(0x01);
   
   // Serial.println("Waiting for an ISO14443A Card ...");
 }
 
-
 void loop(void) {
-  
-  // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
-  // 'uid' will be populated with the UID, and uidLength will indicate
-  // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
-  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
-  
-  if (success) {
-    uint8_t def_string[4] = {0,0,0,0};
+  unsigned long currentMillis = millis();
 
-    // Display some basic information about the card
-    // Serial.println("Found an ISO14443A card");
-    // Serial.print("  UID Length: ");Serial.print(uidLength, DEC);Serial.println(" bytes");
-    // Serial.print("  UID Value: ");
-    // nfc.PrintHex(uid, uidLength);
-    // Serial.println("");
-    
-    if (uidLength == 4)
-    {
-      // We probably have a Mifare Classic card ... value > 5 : ! successs
-      // Serial.println("Seems to be a Mifare Classic card (4 byte UID)");
-      Serial.println("Device not supported with this code");  // NT3H is 7-byte UID. Mifare Classic not supported to save the memory.
-    }
-    
-    if (uidLength == 7)
-    {
-      if (stimProtect == 0) {
-        // As soon as the device found try to stop stimulation
-        
-        writeResult = nfc.mifareultralight_WritePage(5, def_string);
-        Serial.println("Device initialized (erase5): "); Serial.print(writeResult); Serial.print("\n");
-        writeResult = nfc.mifareultralight_WritePage(6, def_string);
-        Serial.println("Device initialized (erase6): "); Serial.print(writeResult); Serial.print("\n");
-        delay(50); // Wait to rectify error states
+  // 1. First priority is to catch stop condition from GUI
+  if (Serial.available() > 0 && Serial.peek() == ' ') {
+    Serial.read();
+    nfc.reset();
+    nfc.begin();
+    nfc.SAMConfig();
+    currentState = STATE_SEEKING_TAG;
+    stimProtect = 0;
 
-        nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
-        delay(1);
-        // Experiment with reset and begin. Possibly this:
-        nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
-        stimProtect = 1;
+    recvInProgress = false; 
+    ndx = 0;
+    newData = false;
+
+    Serial.println("Emergency Stop: RF Field Dropped. Returning to idle.");
+    return; // exit loop
+  }
+  // 2. Get commands from Serial Interface
+  recvWithStartEndMarkers();
+
+  // 3. FSM execution
+  switch (currentState) {
+    case STATE_SEEKING_TAG: // defining tag seeking state:
+      success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // PN532 - enter tag reading mode
+      if (success && uidLength == 7) { // Mifare Ultralight protocol ==> assume NT3H2211
+        if (stimProtect == 0) { // As soon as the device found stop the stimulation: 
+          uint8_t def_string[4] = {0,0,0,0}; // default array of zeros that overwrites all stimulation parameters
+          nfc.mifareultralight_WritePage(5, def_string);
+          nfc.mifareultralight_WritePage(6, def_string);
+          delay(50); // Wait to rectify error states
+          nfc.reset(); nfc.begin(); nfc.SAMConfig(); // reboot EFM8
+          delay(1);
+          success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+          stimProtect = 1;
+        }
+        Serial.println("sVNS implant detected\n");
+        Serial.println("<0> = read once; <1> = write; <2> = loop read; <3> = stimulation loop with telemetry");
+        currentState = STATE_IDLE;
       }
+      break;
+    case STATE_IDLE:
+      if (newData == true) {
+        uint8_t mode = atoi(receivedChars);
+        newData = false;
+        if (mode == 0) memRead();
+        else if (mode == 1) {
+          Serial.println("Enter the programming string:");
+          currentState = STATE_WRITE_WAIT;
+        }
+        else if (mode == 2) { nfc.reset(); nfc.begin(); nfc.SAMConfig(); currentState = STATE_READ_LOOP; }
+        else if (mode == 3) { nfc.reset(); nfc.begin(); nfc.SAMConfig(); currentState = STATE_TRIGGER_LOOP; }
+      }
+    break;
 
-      // We probably have a 7 byte UID Mifare Ultralight card ...
-      Serial.println("sVNS implant detected (7 byte UID)\n"); // NT3H detected
-      modeSelect();
-    }
+    case STATE_WRITE_WAIT: 
+      if (newData == true) {
+        memWrite();
+        Serial.println("Programming complete. Returning to Idle.");
+        Serial.println("<0> = read once; <1> = write; <2> = loop read; <3> = stimulation loop with telemetry");
+        currentState = STATE_IDLE; // Safely return to listening mode
+      }
+      break;
+
+    case STATE_READ_LOOP:
+      if (currentMillis - previousMillis >= 800) {
+        previousMillis = currentMillis;
+        memRead();
+      }
+      break;
+
+    case STATE_TRIGGER_LOOP:
+      if (currentMillis - previousMillis >= 50) {
+        previousMillis = currentMillis;
+        memReadTrigger();
+      }
+    break;
+
   }
-  else {
-    Serial.println("NFC contact lost");
-  }
+
 }
 
 // Function to store the Serial Input to the string array
@@ -267,36 +313,17 @@ void memRead() {
 }
 
 void memWrite() {
-  // Ensure the serial input buffer is empty to not write garbage into memory
-  // while (Serial.available() > 0) {
-  //   Serial.read();
-  // }
-  newData = false; // needs to be reset because is true from the previous entry before entering the function
-  Serial.println("Enter the programming string in format:");
-  Serial.println("<PW_HB,PW_LB,T_HB,T_LB,T_on_HB,T_on_LB,0,On/OFF,Iset,Mode,Channel_Nr,Telemetry On/Off>");
-  recvWithStartEndMarkers(); // Receive command word from Serial Interface
-  if (newData == true) {
-    strcpy(tempChars, receivedChars);
-    arrayParse(); // Create memory integer arrays for the sVNS implant 
-    // Write arrays
-    writeResult = nfc.mifareultralight_WritePage(4, array_PW_Freq); Serial.println("PW and Freq written? "); Serial.println(writeResult);
-    writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on_Iset); Serial.println("Stim time, On bit, current ampl. written? "); Serial.println(writeResult);
-    writeResult = nfc.mifareultralight_WritePage(6, array_mode_ch_tel); Serial.println("Mode, channel, telemetry bit written? "); Serial.println(writeResult);
-    newData = false;
-  }
-  delay(50);
-  //nfc.reset(); nfc.begin(); // restart NFC and the device in order for changes to work in the sVNS mcu
-  //nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // read the tag again
-  // memReadTrigger();
-  // while(Serial.available()==0) { 
-  //   memRead();
-  // }
+  strcpy(tempChars, receivedChars);
+  arrayParse(); // convert received string into stimulation parameter integer arrays for the implant
+  writeResult = nfc.mifareultralight_WritePage(4, array_PW_Freq); Serial.println("PW and Freq written? "); Serial.println(writeResult);
+  writeResult = nfc.mifareultralight_WritePage(5, array_T_on_on_Iset); Serial.println("Stim time, On bit, current ampl. written? "); Serial.println(writeResult);
+  writeResult = nfc.mifareultralight_WritePage(6, array_mode_ch_tel); Serial.println("Mode, channel, telemetry bit written? "); Serial.println(writeResult);
+
+  newData = false;
 }
 
 // Function to store the Serial Input to the string array
 void recvWithStartEndMarkers() {
-    static boolean recvInProgress = false;
-    static byte ndx = 0;
     char startMarker = '<';
     char endMarker = '>';
     char rc;
@@ -364,43 +391,38 @@ void arrayParse() {
 void memReadTrigger() {
   uint8_t data[32];
   uint8_t pageNum = 8;
-  uint8_t last_raw = 0xFF; // sentinel, will never match first real value
-  uint8_t error_count = 0;         // ADD: for diagnostics only
- // bool zero_state = 0;
+  // Static variables persist across non-blocking function calls
+  static uint8_t last_raw = 0xFF; // sentinel, will never match first real value
+  static uint8_t error_count = 0;
 
-  while (Serial.available() == 0) {
-    delay(50);
-    success = nfc.mifareultralight_ReadPage (pageNum, data); // read stimulation channel data
-      if (success) // NFC page 8 read ok
-      {
-            error_count = 0;
-            uint8_t raw      = data[0];
-            uint8_t channel  = raw & 0x7F;   // lower 7 bits
-            bool    stim_off = raw & 0x80;   // high bit
+  success = nfc.mifareultralight_ReadPage(pageNum, data);
+  if (success) {
+    error_count = 0; // Reset RF fault monitor on success
+    uint8_t raw      = data[0];
+    uint8_t channel  = raw & 0x7F;
+    bool    stim_off = raw & 0x80;
 
-            if (raw != last_raw)  // any change triggers
-            {
-                makeTrigger();
-                if (stim_off) {
-                  // reconstruct voltage telemetry from data[1] (LB) and data[2] (HB):
-                    uint16_t voltage_mV = (data[2] << 8) | data[1];
-                    Serial.print("Stimulation off, last channel: ");
-                    Serial.println(channel);  // still know which channel!
-                    Serial.print(voltage_mV);
-                    Serial.println(" mV");
-                } else {
-                    Serial.print("Currently stimulating channel ");
-                    Serial.println(channel);
-                }
-                last_raw = raw;
-            }
-        }
-      else { // NFC page 8 read error
-        //Serial.println("Communication error");
-        nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Re-read if error in comms
-// Re-establish dropped RF session.
+    if (raw != last_raw) {
+      makeTrigger();
+      if (stim_off) {
+        uint16_t voltage_mV = (data[2] << 8) | data[1];
+        Serial.print("Stimulation off, last channel: "); Serial.println(channel);
+        Serial.print(voltage_mV); Serial.println(" mV");
+      } else {
+        Serial.print("Currently stimulating channel "); Serial.println(channel);
       }
+      last_raw = raw;
+    } else {
+      error_count++;
+      if (error_count >= 3) {
+        Serial.println("FAULT: RF Link Lost! Attempting recovery.");
+        nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+      }
+    }
+    
   }
+
+
 }
 
 void makeTrigger() {
